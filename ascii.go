@@ -37,14 +37,26 @@ func RenderASCII(text string) string {
 
 		// Each character is 3 lines starting at index*3
 		startLine := index * 3
-		line1 = append(line1, asciiLines[startLine])
-		line2 = append(line2, asciiLines[startLine+1])
-		line3 = append(line3, asciiLines[startLine+2])
+		// Pad each line to exactly 3 characters for consistent width
+		line1 = append(line1, padToWidth(asciiLines[startLine], 3))
+		line2 = append(line2, padToWidth(asciiLines[startLine+1], 3))
+		line3 = append(line3, padToWidth(asciiLines[startLine+2], 3))
 	}
 
-	return strings.Join(line1, " ") + "\n" +
-		strings.Join(line2, " ") + "\n" +
-		strings.Join(line3, " ")
+	// Join without extra spaces (chars already padded to 3 wide)
+	return strings.Join(line1, "") + "\n" +
+		strings.Join(line2, "") + "\n" +
+		strings.Join(line3, "")
+}
+
+// padToWidth pads a string to exactly the specified width with trailing spaces
+func padToWidth(s string, width int) string {
+	// Count visible characters (not byte length, as Unicode chars are multi-byte)
+	runeCount := len([]rune(s))
+	if runeCount >= width {
+		return s
+	}
+	return s + strings.Repeat(" ", width-runeCount)
 }
 
 // getCharIndex returns the index for a character in the ASCII font

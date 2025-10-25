@@ -12,22 +12,19 @@ import (
 
 // Constants define the graph dimensions and styling.
 const (
-	weeksToDisplay     = 52
-	daysPerWeek        = 7
-	cellWidth          = 2 // Character width per cell (block + space)
-	dayLabelWidth      = 4
-	minTerminalWidth   = dayLabelWidth + (weeksToDisplay * cellWidth)
-	colorLevelZero     = "#161b22" // No contributions
-	colorLevelOne      = "#0e4429" // 1-3 contributions
-	colorLevelTwo      = "#006d32" // 4-6 contributions
-	colorLevelThree    = "#26a641" // 7-9 contributions
-	colorLevelFour     = "#39d353" // 10+ contributions
-	colorTitle         = "#58a6ff"
-	colorLabel         = "#7d8590"
-	colorBorder        = "#58a6ff"
-	colorWarning       = "#484f58"
-	blockChar          = "▄" // Lower half-height block for compact squares
+	weeksToDisplay   = 52
+	daysPerWeek      = 7
+	cellWidth        = 2 // Character width per cell (block + space)
+	dayLabelWidth    = 4
+	minTerminalWidth = dayLabelWidth + (weeksToDisplay * cellWidth)
+	blockChar        = "▄" // Lower half-height block for compact squares
 )
+
+// Note: All colors now imported from centralized styles.go:
+// - colorContribNone, colorContribLow, colorContribMed, colorContribHigh, colorContribHigher
+// - CurrentTheme.Blue (title, border)
+// - CurrentTheme.Gray (labels)
+// - CurrentTheme.Subtle (warning)
 
 // Contribution represents a single day's contribution count.
 type Contribution struct {
@@ -47,7 +44,7 @@ func NewGraph(contributions []Contribution) *Graph {
 	return &Graph{
 		contributions: contributions,
 		title:         "Contribution Activity",
-		showLegend:    true,
+		showLegend:    false,
 	}
 }
 
@@ -110,7 +107,7 @@ func (g *Graph) buildGrid() [daysPerWeek][weeksToDisplay]int {
 func (g *Graph) renderTitle() string {
 	return lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color(colorTitle)).
+		Foreground(lipgloss.Color(CurrentTheme.Blue)).
 		Render(g.title)
 }
 
@@ -155,7 +152,7 @@ func (g *Graph) renderMonthLabels() string {
 	}
 
 	styled := lipgloss.NewStyle().
-		Foreground(lipgloss.Color(colorLabel)).
+		Foreground(lipgloss.Color(CurrentTheme.Gray)).
 		Render(string(labelChars))
 
 	return strings.Repeat(" ", dayLabelWidth) + styled
@@ -172,7 +169,7 @@ func (g *Graph) renderGrid(grid [daysPerWeek][weeksToDisplay]int) string {
 
 		// Add day label
 		label := lipgloss.NewStyle().
-			Foreground(lipgloss.Color(colorLabel)).
+			Foreground(lipgloss.Color(CurrentTheme.Gray)).
 			Width(dayLabelWidth).
 			Render(dayLabels[day])
 		row.WriteString(label)
@@ -217,20 +214,20 @@ func getContributionLevel(count int) int {
 	}
 }
 
-// getColorForLevel returns the GitHub green color for a given intensity level.
+// getColorForLevel returns the contribution color for a given intensity level.
 func getColorForLevel(level int) string {
 	colors := []string{
-		colorLevelZero,
-		colorLevelOne,
-		colorLevelTwo,
-		colorLevelThree,
-		colorLevelFour,
+		CurrentTheme.ContribNone,
+		CurrentTheme.ContribLow,
+		CurrentTheme.ContribMed,
+		CurrentTheme.ContribHigh,
+		CurrentTheme.ContribHigher,
 	}
 
 	if level >= 0 && level < len(colors) {
 		return colors[level]
 	}
-	return colorLevelZero
+	return CurrentTheme.ContribNone
 }
 
 // renderLegend creates the "Less -> More" color scale indicator.
@@ -238,7 +235,7 @@ func (g *Graph) renderLegend() string {
 	var parts []string
 
 	parts = append(parts, lipgloss.NewStyle().
-		Foreground(lipgloss.Color(colorLabel)).
+		Foreground(lipgloss.Color(CurrentTheme.Gray)).
 		Render("Less"))
 
 	for level := 0; level < 5; level++ {
@@ -250,7 +247,7 @@ func (g *Graph) renderLegend() string {
 	}
 
 	parts = append(parts, lipgloss.NewStyle().
-		Foreground(lipgloss.Color(colorLabel)).
+		Foreground(lipgloss.Color(CurrentTheme.Gray)).
 		Render("More"))
 
 	return strings.Repeat(" ", dayLabelWidth) + strings.Join(parts, "")
@@ -278,19 +275,19 @@ func renderWidthWarning(currentWidth, minWidth int) string {
 	// Build styled box
 	style := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color(colorBorder)).
+		BorderForeground(lipgloss.Color(CurrentTheme.Blue)).
 		Padding(1, 2).
 		Width(maxBoxWidth).
 		Align(lipgloss.Center)
 
 	content := lipgloss.NewStyle().
-		Foreground(lipgloss.Color(colorLabel)).
+		Foreground(lipgloss.Color(CurrentTheme.Gray)).
 		Bold(true).
 		Render(message)
 
 	if detail != "" {
 		detailStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color(colorWarning)).
+			Foreground(lipgloss.Color(CurrentTheme.Subtle)).
 			Render(detail)
 		content = lipgloss.JoinVertical(lipgloss.Center, content, "", detailStyle)
 	}

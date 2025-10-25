@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os/exec"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/cli/go-gh/v2/pkg/auth"
+	ghAPI "github.com/cli/go-gh/v2/pkg/api"
 )
 
 const (
@@ -19,31 +21,40 @@ const (
 
 // GitHubClient handles all GitHub API interactions
 type GitHubClient struct {
-	token      string
 	httpClient *http.Client
 }
 
-// NewGitHubClient creates a new GitHub API client with auto-detected token
+// NewGitHubClient creates a new GitHub API client using official go-gh library
+// This is the IDIOMATIC and SECURE way - it handles:
+// - Environment variables (GITHUB_TOKEN, GH_TOKEN)
+// - gh CLI authentication
+// - Proper token storage and security
+// - No manual exec.Command calls
 func NewGitHubClient() (*GitHubClient, error) {
-	token, err := getGHToken()
+	// Use official go-gh to get authenticated HTTP client
+	// This automatically handles:
+	// 1. Checking GITHUB_TOKEN/GH_TOKEN env vars
+	// 2. Using gh CLI auth if available
+	// 3. Proper OAuth token handling
+	// 4. Security best practices
+	opts := &ghAPI.ClientOptions{
+		Host:    "github.com",
+		Timeout: 10 * time.Second,
+	}
+
+	httpClient, err := ghAPI.NewHTTPClient(*opts)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get GitHub token: %w", err)
+		return nil, fmt.Errorf("failed to create authenticated client: %w\nRun 'gh auth login' or set GITHUB_TOKEN environment variable", err)
+	}
+
+	// Verify authentication works
+	if token, _ := auth.TokenForHost("github.com"); token == "" {
+		return nil, fmt.Errorf("no GitHub authentication found\nRun 'gh auth login' or set GITHUB_TOKEN environment variable")
 	}
 
 	return &GitHubClient{
-		token:      token,
-		httpClient: &http.Client{Timeout: 10 * time.Second},
+		httpClient: httpClient,
 	}, nil
-}
-
-// getGHToken attempts to get token from gh CLI
-func getGHToken() (string, error) {
-	cmd := exec.Command("gh", "auth", "token")
-	output, err := cmd.Output()
-	if err != nil {
-		return "", fmt.Errorf("gh CLI not authenticated - run 'gh auth login'")
-	}
-	return strings.TrimSpace(string(output)), nil
 }
 
 // Repository represents a GitHub repository
@@ -64,6 +75,7 @@ type ProfileData struct {
 	Bio         string
 	Location    string
 	Company     string
+	AvatarURL   string
 	PublicRepos int
 	PublicGists int
 	Followers   int
@@ -87,6 +99,35 @@ type Activity struct {
 	Public    bool
 }
 
+// PullRequest represents a GitHub pull request
+type PullRequest struct {
+	Number      int       `json:"number"`
+	Title       string    `json:"title"`
+	State       string    `json:"state"` // open, closed
+	URL         string    `json:"html_url"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+	ClosedAt    time.Time `json:"closed_at"`
+	MergedAt    time.Time `json:"merged_at"`
+	User        struct {
+		Login string `json:"login"`
+	} `json:"user"`
+	Draft bool `json:"draft"`
+	Repo  struct {
+		FullName string `json:"full_name"`
+	} `json:"repository"`
+	// Review status
+	ReviewDecision string // APPROVED, CHANGES_REQUESTED, REVIEW_REQUIRED, null
+	ApprovedCount  int
+	ChangesCount   int
+	CommentCount   int
+}
+
+// IsMerged returns true if the PR was merged
+func (pr *PullRequest) IsMerged() bool {
+	return !pr.MergedAt.IsZero()
+}
+
 // FetchProfile fetches user profile data
 // includePrivate: if true, uses /user endpoint to get private counts (only works for authenticated user)
 func (c *GitHubClient) FetchProfile(username string, includePrivate bool) (*ProfileData, error) {
@@ -99,7 +140,7 @@ func (c *GitHubClient) FetchProfile(username string, includePrivate bool) (*Prof
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", "token "+c.token)
+	// Authorization header automatically added by go-gh HTTPClient
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
 
 	resp, err := c.httpClient.Do(req)
@@ -118,6 +159,7 @@ func (c *GitHubClient) FetchProfile(username string, includePrivate bool) (*Prof
 		Bio               string    `json:"bio"`
 		Location          string    `json:"location"`
 		Company           string    `json:"company"`
+		AvatarURL         string    `json:"avatar_url"`
 		PublicRepos       int       `json:"public_repos"`
 		TotalPrivateRepos int       `json:"total_private_repos"`
 		PublicGists       int       `json:"public_gists"`
@@ -136,6 +178,7 @@ func (c *GitHubClient) FetchProfile(username string, includePrivate bool) (*Prof
 		Bio:         data.Bio,
 		Location:    data.Location,
 		Company:     data.Company,
+		AvatarURL:   data.AvatarURL,
 		PublicRepos: data.PublicRepos,
 		PublicGists: data.PublicGists,
 		Followers:   data.Followers,
@@ -152,7 +195,7 @@ func (c *GitHubClient) FetchAuthenticatedUser() (*ProfileData, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", "token "+c.token)
+	// Authorization header automatically added by go-gh HTTPClient
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
 
 	resp, err := c.httpClient.Do(req)
@@ -171,6 +214,7 @@ func (c *GitHubClient) FetchAuthenticatedUser() (*ProfileData, error) {
 		Bio         string    `json:"bio"`
 		Location    string    `json:"location"`
 		Company     string    `json:"company"`
+		AvatarURL   string    `json:"avatar_url"`
 		PublicRepos int       `json:"public_repos"`
 		PublicGists int       `json:"public_gists"`
 		Followers   int       `json:"followers"`
@@ -188,6 +232,7 @@ func (c *GitHubClient) FetchAuthenticatedUser() (*ProfileData, error) {
 		Bio:         data.Bio,
 		Location:    data.Location,
 		Company:     data.Company,
+		AvatarURL:   data.AvatarURL,
 		PublicRepos: data.PublicRepos,
 		PublicGists: data.PublicGists,
 		Followers:   data.Followers,
@@ -234,7 +279,7 @@ func (c *GitHubClient) FetchContributions(username string) ([]Contribution, erro
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", "bearer "+c.token)
+	// Authorization header automatically added by go-gh HTTPClient
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.httpClient.Do(req)
@@ -313,7 +358,7 @@ func (c *GitHubClient) FetchLanguages(username string, includePrivate bool) ([]L
 		if err != nil {
 			return nil, 0, err
 		}
-		req.Header.Set("Authorization", "token "+c.token)
+		// Authorization header automatically added by go-gh HTTPClient
 		req.Header.Set("Accept", "application/vnd.github.v3+json")
 
 		resp, err := c.httpClient.Do(req)
@@ -409,7 +454,7 @@ func (c *GitHubClient) FetchTopRepositories(username string, includePrivate bool
 		if err != nil {
 			return nil, err
 		}
-		req.Header.Set("Authorization", "token "+c.token)
+		// Authorization header automatically added by go-gh HTTPClient
 		req.Header.Set("Accept", "application/vnd.github.v3+json")
 
 		resp, err := c.httpClient.Do(req)
@@ -461,7 +506,7 @@ func (c *GitHubClient) FetchRecentActivity(username string, includePrivate bool)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", "token "+c.token)
+	// Authorization header automatically added by go-gh HTTPClient
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
 
 	resp, err := c.httpClient.Do(req)
@@ -530,6 +575,140 @@ func getActionDescription(eventType string, payload map[string]interface{}) stri
 		return "Forked repository"
 	default:
 		return eventType
+	}
+}
+
+// FetchPullRequests fetches pull requests for the user
+// includePrivate: if true, includes PRs from private repos
+func (c *GitHubClient) FetchPullRequests(username string, includePrivate bool) ([]PullRequest, error) {
+	// Try to get open PRs first
+	prs, err := c.fetchPRsByState(username, "open")
+	if err != nil {
+		return nil, err
+	}
+
+	// If no open PRs, fallback to recently closed/merged PRs
+	if len(prs) == 0 {
+		prs, err = c.fetchPRsByState(username, "closed")
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return prs, nil
+}
+
+// fetchPRsByState fetches PRs with a specific state (open, closed, merged)
+func (c *GitHubClient) fetchPRsByState(username string, state string) ([]PullRequest, error) {
+	// Search for PRs authored by user, assigned to user, or mentioning user
+	queries := []string{
+		fmt.Sprintf("author:%s type:pr state:%s", username, state),
+		fmt.Sprintf("assignee:%s type:pr state:%s", username, state),
+		fmt.Sprintf("mentions:%s type:pr state:%s", username, state),
+	}
+
+	prMap := make(map[string]*PullRequest) // Dedupe by URL
+
+	for _, query := range queries {
+		url := fmt.Sprintf("%s/search/issues?q=%s&sort=updated&order=desc&per_page=20", githubAPIURL, query)
+
+		req, err := http.NewRequest("GET", url, nil)
+		if err != nil {
+			continue
+		}
+		// Authorization header automatically added by go-gh HTTPClient
+		req.Header.Set("Accept", "application/vnd.github.v3+json")
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			continue
+		}
+
+		var result struct {
+			Items []PullRequest `json:"items"`
+		}
+
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			resp.Body.Close()
+			continue
+		}
+		resp.Body.Close()
+
+		// Dedupe and store PRs
+		for _, pr := range result.Items {
+			if _, exists := prMap[pr.URL]; !exists {
+				// Fetch review status for this PR
+				c.enrichPRWithReviews(&pr)
+				prMap[pr.URL] = &pr
+			}
+		}
+	}
+
+	// Convert map to slice
+	var prs []PullRequest
+	for _, pr := range prMap {
+		prs = append(prs, *pr)
+	}
+
+	// Sort by updated time (most recent first)
+	sort.Slice(prs, func(i, j int) bool {
+		return prs[i].UpdatedAt.After(prs[j].UpdatedAt)
+	})
+
+	return prs, nil
+}
+
+// enrichPRWithReviews fetches review status for a PR
+func (c *GitHubClient) enrichPRWithReviews(pr *PullRequest) {
+	// Extract owner and repo from full name
+	parts := strings.Split(pr.Repo.FullName, "/")
+	if len(parts) != 2 {
+		return
+	}
+
+	owner, repo := parts[0], parts[1]
+	url := fmt.Sprintf("%s/repos/%s/%s/pulls/%d/reviews", githubAPIURL, owner, repo, pr.Number)
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return
+	}
+	// Authorization header automatically added by go-gh HTTPClient
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+
+	var reviews []struct {
+		State string `json:"state"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&reviews); err != nil {
+		return
+	}
+
+	// Count review states
+	for _, review := range reviews {
+		switch review.State {
+		case "APPROVED":
+			pr.ApprovedCount++
+		case "CHANGES_REQUESTED":
+			pr.ChangesCount++
+		case "COMMENTED":
+			pr.CommentCount++
+		}
+	}
+
+	// Determine overall review decision
+	if pr.ChangesCount > 0 {
+		pr.ReviewDecision = "CHANGES_REQUESTED"
+	} else if pr.ApprovedCount > 0 {
+		pr.ReviewDecision = "APPROVED"
+	} else if pr.CommentCount > 0 {
+		pr.ReviewDecision = "REVIEW_REQUIRED"
 	}
 }
 
