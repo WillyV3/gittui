@@ -5,6 +5,7 @@ A terminal user interface for viewing GitHub profiles, contributions, and activi
 ## Features
 
 - View GitHub profile information and statistics
+- Colorized braille avatar display
 - Interactive contribution graph (52-week GitHub-style heatmap)
 - Top programming languages with visual breakdown
 - Contribution streak tracking
@@ -67,6 +68,7 @@ This allows you to:
 
 - `q` or `Ctrl+C` - Quit
 - `r` - Refresh all data
+- `t` - Cycle through themes
 - `p` - Toggle between public-only and all repositories (own profile only)
 - `↑↓` or `j/k` - Scroll activity timeline
 
@@ -83,6 +85,7 @@ Built with:
 - [Bubble Tea](https://github.com/charmbracelet/bubbletea) - Terminal UI framework
 - [Lipgloss](https://github.com/charmbracelet/lipgloss) - Terminal styling
 - [Bubbles](https://github.com/charmbracelet/bubbles) - TUI components
+- [dotmatrix](https://github.com/kevin-cantwell/dotmatrix) - Braille image rendering
 - GitHub REST API and GraphQL API
 
 ## Development
