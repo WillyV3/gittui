@@ -1,6 +1,6 @@
 # gittui
+![gittui-demo](https://github.com/user-attachments/assets/145f7ce0-311a-45e6-9096-8fb4b477ae35)
 
-![gittui-demo](https://github.com/user-attachments/assets/3aef7ff7-2357-4724-b381-8fc451fb021d)
 
 A terminal user interface for viewing GitHub profiles, contributions, and activity.
 
