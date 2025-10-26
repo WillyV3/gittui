@@ -76,6 +76,8 @@ github.com/thlib/go-timezone-local v0.0.0-20210907160436-ef149e42d28e h1:Buzhfgf
 github.com/thlib/go-timezone-local v0.0.0-20210907160436-ef149e42d28e/go.mod h1:/Tnicc6m/lsJE0irFMA0LfIwTBo4QP7A8IfyIv4zZKI=
 github.com/willyv3/gogh-themes v1.0.0 h1:xOCXsdq2Lu4tgOKoFMkL6JS79r1SIHc026l++wVO768=
 github.com/willyv3/gogh-themes v1.0.0/go.mod h1:2gUbVyHs7pqXutp2+y53kXQHJK/2ErZrbbVG8uaqSyg=
+github.com/willyv3/gogh-themes v1.2.0 h1:ZoMFTHMlvVzKB1u6xxCCM6J/kxzo3/hCkDBHXVH9478=
+github.com/willyv3/gogh-themes v1.2.0/go.mod h1:IWaktIGHbFYj1y0KgPpXnGniHyD9zwDhBA1IEj5zOlE=
 github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e h1:JVG44RsyaB9T2KIHavMF/ppJZNG9ZpyihvCd0w101no=
 github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e/go.mod h1:RbqR21r5mrJuqunuUZ/Dhy/avygyECGrLceyNeo4LiM=
 golang.org/x/crypto v0.0.0-20170516161655-0fe963104e9d/go.mod h1:6SG95UA2DQfeDnfUPMdvaQW0Q7yPrPDi9nlGo2tz2b4=

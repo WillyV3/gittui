@@ -164,9 +164,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		case "t", "T":
-			// Cycle through themes (github-dark -> dracula -> nord -> github-dark)
+			// Cycle through themes
 			NextTheme()
-			InitStyles() // Reinitialize styles with new theme colors
+			InitStyles()
+			m.viewport.Style = lipgloss.NewStyle().
+				Foreground(lipgloss.Color(CurrentTheme.Foreground))
+			m.viewport.SetContent(m.renderActivityList())
 			return m, nil
 		}
 
@@ -174,13 +177,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 
-		// Viewport will be sized dynamically in View() based on actual available space
 		if !m.ready {
-			m.viewport = viewport.New(m.width, 10) // Initial size, will be updated
+			m.viewport = viewport.New(m.width, m.calculateActivityViewportHeight())
+			m.viewport.Style = lipgloss.NewStyle().
+				Foreground(lipgloss.Color(CurrentTheme.Foreground))
 			m.ready = true
 		} else {
 			m.viewport.Width = m.width
-			// Height will be set in renderActivity() based on actual available space
+			m.viewport.Height = m.calculateActivityViewportHeight()
 		}
 
 	case profileMsg:
@@ -256,16 +260,17 @@ func (m Model) View() string {
 
 	var sections []string
 
-	// Header section with padding
-	header := m.renderHeader(availableWidth)
-	if header != "" {
-		headerPadded := lipgloss.NewStyle().
-			PaddingBottom(vPadding).
-			Render(header)
-		headerHeight := lipgloss.Height(headerPadded)
-		sections = append(sections, headerPadded)
-		availableHeight -= headerHeight
-	}
+	// Braille logo at top (right aligned with margin, contrasting background)
+	logo := ` ⢀⡀ ⠄ ⣰⡀ ⣰⡀ ⡀⢀ ⠄
+ ⣑⡺ ⠇ ⠘⠤ ⠘⠤ ⠣⠼ ⠇`
+	styledLogo := lipgloss.NewStyle().
+		Width(m.width).
+		Background(lipgloss.Color(CurrentTheme.Subtle)).
+		Align(lipgloss.Right).
+		PaddingTop(1).
+		PaddingRight(5).
+		Render(accentStyle.Render(logo))
+	sections = append(sections, styledLogo)
 
 	// Contribution graph with padding
 	graph := m.renderGraphSection(availableWidth)
@@ -295,16 +300,16 @@ func (m Model) View() string {
 		availableHeight -= statsHeight
 	}
 
-	// Measure ASCII username and status bar to calculate activity space dynamically
-	asciiUsername := m.renderASCIIUsername(availableWidth)
-	asciiHeight := lipgloss.Height(asciiUsername)
+	// Measure bottom section (ASCII art + profile info side by side) and status bar
+	bottomSection := m.renderBottomSection(availableWidth)
+	bottomHeight := lipgloss.Height(bottomSection)
 
 	statusBar := m.renderStatusBar(availableWidth)
 	statusHeight := lipgloss.Height(statusBar)
 
 	// Multi-column row (PRs, Activity, etc.) - scalable for future columns
 	if availableHeight > 10 {
-		rowHeight := availableHeight - asciiHeight - statusHeight
+		rowHeight := availableHeight - bottomHeight - statusHeight
 
 		// Render multi-column row
 		columnsRow := m.renderColumnsRow(availableWidth, rowHeight)
@@ -313,8 +318,8 @@ func (m Model) View() string {
 		}
 	}
 
-	// ASCII username above status bar
-	sections = append(sections, asciiUsername)
+	// Bottom section: ASCII art/avatar on left, profile info on right
+	sections = append(sections, bottomSection)
 
 	// Status bar
 	sections = append(sections, statusBar)
@@ -359,71 +364,8 @@ func (m Model) renderLoading() string {
 	return loadingStyle.Render(loadingBox)
 }
 
-// renderHeader renders profile information
-func (m Model) renderHeader(width int) string {
-	if m.profile == nil {
-		return ""
-	}
-
-	// Calculate internal padding based on available space
-	hMargin := 1
-	if width > 100 {
-		hMargin = 2
-	}
-
-	contentWidth := width - (hMargin * 2)
-
-	// Profile title
-	title := titleStyle.Render(fmt.Sprintf("%s (@%s)", m.profile.Name, m.profile.Login))
-
-	// Bio and location
-	var info []string
-	if m.profile.Bio != "" {
-		bio := lipgloss.NewStyle().Width(contentWidth).Render(m.profile.Bio)
-		info = append(info, baseStyle.Render(bio))
-	}
-	var meta []string
-	if m.profile.Location != "" {
-		meta = append(meta, labelStyle.Render("Location: ")+baseStyle.Render(m.profile.Location))
-	}
-	if m.profile.Company != "" {
-		meta = append(meta, labelStyle.Render("Company: ")+baseStyle.Render(m.profile.Company))
-	}
-	if len(meta) > 0 {
-		info = append(info, strings.Join(meta, " | "))
-	}
-
-	// Stats - use actual repo count from fetched repos (includes orgs and private)
-	repoCount := m.repoCount
-	if repoCount == 0 {
-		repoCount = m.profile.PublicRepos
-	}
-
-	stats := []string{
-		fmt.Sprintf("%s %d", labelStyle.Render("Repos:"), repoCount),
-		fmt.Sprintf("%s %d", labelStyle.Render("Gists:"), m.profile.PublicGists),
-		fmt.Sprintf("%s %d", labelStyle.Render("Followers:"), m.profile.Followers),
-		fmt.Sprintf("%s %d", labelStyle.Render("Following:"), m.profile.Following),
-	}
-	statsLine := baseStyle.Render(strings.Join(stats, " | "))
-	info = append(info, statsLine)
-
-	// Member since
-	memberSince := labelStyle.Render("Member since: ") +
-		baseStyle.Render(m.profile.CreatedAt.Format("January 2006"))
-	info = append(info, memberSince)
-
-	content := lipgloss.JoinVertical(lipgloss.Left, title, strings.Join(info, "\n"))
-
-	// Add horizontal padding
-	return lipgloss.NewStyle().
-		PaddingLeft(hMargin).
-		PaddingRight(hMargin).
-		Render(content)
-}
-
-// renderASCIIUsername renders the username in ASCII art with braille avatar
-func (m Model) renderASCIIUsername(width int) string {
+// renderBottomSection renders ASCII art/avatar on left, profile info on right
+func (m Model) renderBottomSection(width int) string {
 	if m.profile == nil {
 		return ""
 	}
@@ -434,34 +376,104 @@ func (m Model) renderASCIIUsername(width int) string {
 		hMargin = 2
 	}
 
-	var components []string
+	// Left side: ASCII art and avatar
+	var leftComponents []string
 
-	// Add braille avatar if available (stacked on top)
+	// Add braille avatar if available
 	if m.avatarImage != nil {
-		// Render with current theme colors
 		renderer := NewColorizedBrailleRenderer(CurrentTheme)
 		avatarBraille := renderer.RenderColorized(m.avatarImage)
-		components = append(components, avatarBraille)
+		leftComponents = append(leftComponents, avatarBraille)
 	}
 
-	// Add ASCII username below avatar (uppercase for consistent ASCII art rendering)
-	// Truncate long usernames to fit terminal width (each char ~4 cols + space)
+	// Add ASCII username below avatar
 	username := m.profile.Login
-	maxChars := (width - (hMargin * 2)) / 5 // ~5 terminal cols per ASCII char
-	if len(username) > maxChars-1 { // -1 for @ symbol
+	maxChars := 20 // Reasonable limit for ASCII art
+	if len(username) > maxChars-1 {
 		username = username[:maxChars-1]
 	}
 	asciiName := RenderASCII("@" + strings.ToUpper(username))
 	asciiStyled := accentStyle.Render(asciiName)
-	components = append(components, asciiStyled)
+	leftComponents = append(leftComponents, asciiStyled)
 
-	// Stack vertically with avatar on top
-	content := lipgloss.JoinVertical(lipgloss.Left, components...)
+	leftContent := lipgloss.JoinVertical(lipgloss.Left, leftComponents...)
+
+	// Right side: Profile info with border
+	profileInfo := m.renderProfileInfo()
+	profileWithBorder := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color(CurrentTheme.Blue)).
+		Padding(1, 2).
+		Render(profileInfo)
+
+	// Join horizontally with spacing, align to center
+	combined := lipgloss.JoinHorizontal(
+		lipgloss.Center,
+		leftContent,
+		strings.Repeat(" ", 4), // Space between left and right
+		profileWithBorder,
+	)
 
 	return lipgloss.NewStyle().
 		PaddingLeft(hMargin).
 		PaddingRight(hMargin).
-		Render(content)
+		Render(combined)
+}
+
+// renderProfileInfo renders profile information (moved from header)
+func (m Model) renderProfileInfo() string {
+	if m.profile == nil {
+		return ""
+	}
+
+	var info []string
+
+	// Name and username
+	title := titleStyle.Render(fmt.Sprintf("%s (@%s)", m.profile.Name, m.profile.Login))
+	info = append(info, title)
+	info = append(info, "")
+
+	// Bio
+	if m.profile.Bio != "" {
+		bio := baseStyle.Render(m.profile.Bio)
+		info = append(info, bio)
+		info = append(info, "")
+	}
+
+	// Location and company
+	var meta []string
+	if m.profile.Location != "" {
+		meta = append(meta, labelStyle.Render("Location: ")+baseStyle.Render(m.profile.Location))
+	}
+	if m.profile.Company != "" {
+		meta = append(meta, labelStyle.Render("Company: ")+baseStyle.Render(m.profile.Company))
+	}
+	if len(meta) > 0 {
+		info = append(info, strings.Join(meta, " | "))
+		info = append(info, "")
+	}
+
+	// Stats
+	repoCount := m.repoCount
+	if repoCount == 0 {
+		repoCount = m.profile.PublicRepos
+	}
+	stats := []string{
+		fmt.Sprintf("%s %d", labelStyle.Render("Repos:"), repoCount),
+		fmt.Sprintf("%s %d", labelStyle.Render("Gists:"), m.profile.PublicGists),
+		fmt.Sprintf("%s %d", labelStyle.Render("Followers:"), m.profile.Followers),
+		fmt.Sprintf("%s %d", labelStyle.Render("Following:"), m.profile.Following),
+	}
+	statsLine := baseStyle.Render(strings.Join(stats, " | "))
+	info = append(info, statsLine)
+	info = append(info, "")
+
+	// Member since
+	memberSince := labelStyle.Render("Member since: ") +
+		baseStyle.Render(m.profile.CreatedAt.Format("January 2006"))
+	info = append(info, memberSince)
+
+	return lipgloss.JoinVertical(lipgloss.Left, info...)
 }
 
 // renderGraphSection renders the contribution graph
@@ -725,9 +737,8 @@ func (m Model) renderColumnsRow(width, height int) string {
 	return lipgloss.JoinHorizontal(lipgloss.Top, renderedColumns...)
 }
 
-// renderActivity renders recent activity timeline
+// renderActivity renders recent activity viewport
 func (m Model) renderActivity(width, height int) string {
-	// Calculate internal padding
 	hMargin := 1
 	if width > 100 {
 		hMargin = 2
@@ -743,69 +754,107 @@ func (m Model) renderActivity(width, height int) string {
 			Render(content)
 	}
 
-	// Update viewport height to match actual available space
-	// Title + blank line = 2 lines
-	viewportHeight := height - 2
-	if viewportHeight < 5 {
-		viewportHeight = 5
-	}
-	m.viewport.Height = viewportHeight
+	// Render table header (frozen, outside viewport)
+	timeWidth := 10
+	eventWidth := 20
+	repoWidth := 30
+	actionWidth := 40
 
-	content := lipgloss.JoinVertical(lipgloss.Left, title, "", m.viewport.View())
+	headerStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(CurrentTheme.Blue)).
+		Bold(true)
+
+	borderStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(CurrentTheme.Gray))
+
+	divider := borderStyle.Render("│")
+
+	// Build header with consistent border styling
+	header := fmt.Sprintf("%s %s %s %s %s %s %s",
+		headerStyle.Render(fmt.Sprintf("%-*s", timeWidth, "Time")),
+		divider,
+		headerStyle.Render(fmt.Sprintf("%-*s", eventWidth, "Event")),
+		divider,
+		headerStyle.Render(fmt.Sprintf("%-*s", repoWidth, "Repository")),
+		divider,
+		headerStyle.Render(fmt.Sprintf("%-*s", actionWidth, "Action")),
+	)
+
+	separator := borderStyle.Render(strings.Repeat("─", timeWidth) + "─┼─" +
+		strings.Repeat("─", eventWidth) + "─┼─" +
+		strings.Repeat("─", repoWidth) + "─┼─" +
+		strings.Repeat("─", actionWidth))
+
+	// Stack: title, header, separator, viewport content
+	content := lipgloss.JoinVertical(lipgloss.Left, title, "", header, separator, m.viewport.View())
 	return lipgloss.NewStyle().
 		PaddingLeft(hMargin).
 		PaddingRight(hMargin).
 		Render(content)
 }
 
-// renderActivityList creates the activity list content
+// renderActivityList creates the activity list content with table styling
 func (m Model) renderActivityList() string {
 	if len(m.activities) == 0 {
 		return labelStyle.Render("No recent activity")
 	}
 
-	// Calculate max items that can fit in viewport
-	// Title takes 2 lines, each activity is 1 line
-	maxItems := m.viewport.Height - 2
+	// Column widths (must match renderActivity header)
+	timeWidth := 10
+	eventWidth := 20
+	repoWidth := 30
+	actionWidth := 40
 
-	// Enforce bounds: minimum 5, maximum 10
-	if maxItems < 5 {
-		maxItems = 5
-	}
-	if maxItems > 10 {
-		maxItems = 10
-	}
+	var rows []string
 
-	// Only show what fits
-	displayActivities := m.activities
-	if len(displayActivities) > maxItems {
-		displayActivities = displayActivities[:maxItems]
-	}
+	// Styles for colorizing columns
+	timeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(CurrentTheme.Cyan))
+	eventStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(CurrentTheme.Yellow))
+	repoStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(CurrentTheme.Green))
+	actionStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(CurrentTheme.Foreground))
+	dividerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(CurrentTheme.Gray))
 
-	var items []string
-	for _, activity := range displayActivities {
-		// Format timestamp
+	// Data rows
+	for _, activity := range m.activities {
 		timeAgo := formatTimeAgo(activity.Timestamp)
-
-		// Privacy indicator
 		privacy := ""
 		if !activity.Public {
-			privacy = subtleStyle.Render("[private] ")
+			privacy = "[private] "
 		}
 
-		// Format line
-		line := fmt.Sprintf("%s %s %s%s %s",
-			subtleStyle.Render(timeAgo),
-			labelStyle.Render(activity.Type),
-			privacy,
-			baseStyle.Render(activity.Repo),
-			subtleStyle.Render(activity.Action),
+		// Truncate to fit columns
+		eventType := activity.Type
+		if len(eventType) > eventWidth {
+			eventType = eventType[:eventWidth-1] + "…"
+		}
+
+		repo := privacy + activity.Repo
+		if len(repo) > repoWidth {
+			repo = repo[:repoWidth-1] + "…"
+		}
+
+		action := activity.Action
+		if len(action) > actionWidth {
+			action = action[:actionWidth-1] + "…"
+		}
+
+		// Build row with colorized columns
+		line := fmt.Sprintf("%s %s %s %s %s %s %s",
+			timeStyle.Render(fmt.Sprintf("%-*s", timeWidth, timeAgo)),
+			dividerStyle.Render("│"),
+			eventStyle.Render(fmt.Sprintf("%-*s", eventWidth, eventType)),
+			dividerStyle.Render("│"),
+			repoStyle.Render(fmt.Sprintf("%-*s", repoWidth, repo)),
+			dividerStyle.Render("│"),
+			actionStyle.Render(fmt.Sprintf("%-*s", actionWidth, action)),
 		)
-		items = append(items, line)
+
+		rows = append(rows, line)
 	}
 
-	return strings.Join(items, "\n")
+	return strings.Join(rows, "\n")
 }
+
 
 // renderStatusBar renders the bottom status bar with keybindings
 func (m Model) renderStatusBar(width int) string {
@@ -844,9 +893,13 @@ func (m Model) renderStatusBar(width int) string {
 	// t: theme [name] (count)
 	themeName := GetCurrentThemeName()
 	themeCount := GetThemeCount()
+	// Truncate long theme names to prevent wrapping
+	if len(themeName) > 20 {
+		themeName = themeName[:17] + "..."
+	}
 	parts = append(parts, keyStyle.Render("t")+descStyle.Render(": theme ")+
 		valueStyle.Render(fmt.Sprintf("[%s]", themeName))+
-		descStyle.Render(fmt.Sprintf(" (%d available)", themeCount)))
+		descStyle.Render(fmt.Sprintf(" (%d)", themeCount)))
 
 	// p: toggle view [mode] (only for own profile)
 	if m.isOwnProfile {
@@ -873,6 +926,36 @@ func (m Model) renderStatusBar(width int) string {
 }
 
 // Helper functions
+
+// calculateActivityViewportHeight calculates the appropriate viewport height
+// based on available terminal space, accounting for all other UI sections
+func (m Model) calculateActivityViewportHeight() int {
+	if m.height < 20 {
+		return 5 // Minimum height for small terminals
+	}
+
+	// Estimate space taken by other sections:
+	// - Header: ~6 lines
+	// - Graph: ~10 lines
+	// - Stats row: ~12 lines
+	// - ASCII username: ~4 lines
+	// - Status bar: 1 line
+	// - Activity title + spacing: 2 lines
+	// - Vertical padding: ~3 lines
+	estimatedOtherContent := 38
+
+	availableHeight := m.height - estimatedOtherContent
+
+	// Enforce reasonable bounds
+	if availableHeight < 5 {
+		availableHeight = 5
+	}
+	if availableHeight > 15 {
+		availableHeight = 15
+	}
+
+	return availableHeight
+}
 
 // calculateCurrentStreak calculates the current contribution streak
 func calculateCurrentStreak(contributions []Contribution) int {

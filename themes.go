@@ -14,14 +14,30 @@ type Theme struct {
 	Foreground string
 	Subtle     string
 
-	// Accent colors - semantic naming for UI elements
-	Blue   string
-	Green  string
-	Red    string
-	Yellow string
-	Purple string
-	Gray   string
-	Dark   string
+	// Primary ANSI colors (0-7)
+	Black   string
+	Red     string
+	Green   string
+	Yellow  string
+	Blue    string
+	Magenta string
+	Cyan    string
+	White   string
+
+	// Bright ANSI colors (8-15)
+	BrightBlack   string
+	BrightRed     string
+	BrightGreen   string
+	BrightYellow  string
+	BrightBlue    string
+	BrightMagenta string
+	BrightCyan    string
+	BrightWhite   string
+
+	// Semantic aliases for convenience
+	Purple string // Alias for Magenta
+	Gray   string // Alias for White
+	Dark   string // Alias for Black
 
 	// Contribution graph intensity levels (0-4)
 	ContribNone   string
@@ -75,17 +91,33 @@ func loadAllThemes() {
 	allGoghThemes := goghthemes.All()
 
 	for name, goghTheme := range allGoghThemes {
-		// Convert gogh theme to our Theme struct
+		// Convert gogh theme to our Theme struct with full 16-color support
 		theme := Theme{
 			Background: goghTheme.Background,
 			Foreground: goghTheme.Foreground,
 			Subtle:     generateShade(goghTheme.Background, 1.3), // 30% brighter
 
-			// Map ANSI colors to semantic names
-			Blue:   goghTheme.Blue,
-			Green:  goghTheme.Green,
-			Red:    goghTheme.Red,
-			Yellow: goghTheme.Yellow,
+			// Primary ANSI colors (0-7)
+			Black:   goghTheme.Black,
+			Red:     goghTheme.Red,
+			Green:   goghTheme.Green,
+			Yellow:  goghTheme.Yellow,
+			Blue:    goghTheme.Blue,
+			Magenta: goghTheme.Magenta,
+			Cyan:    goghTheme.Cyan,
+			White:   goghTheme.White,
+
+			// Bright ANSI colors (8-15)
+			BrightBlack:   goghTheme.BrightBlack,
+			BrightRed:     goghTheme.BrightRed,
+			BrightGreen:   goghTheme.BrightGreen,
+			BrightYellow:  goghTheme.BrightYellow,
+			BrightBlue:    goghTheme.BrightBlue,
+			BrightMagenta: goghTheme.BrightMagenta,
+			BrightCyan:    goghTheme.BrightCyan,
+			BrightWhite:   goghTheme.BrightWhite,
+
+			// Semantic aliases
 			Purple: goghTheme.Magenta,
 			Gray:   goghTheme.White,
 			Dark:   goghTheme.Black,
