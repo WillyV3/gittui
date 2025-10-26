@@ -174,8 +174,18 @@ main() {
     git push origin "$NEW_VERSION"
     print_success "Tag and code pushed to GitHub"
 
-    # Step 5: Calculate SHA256 for new tarball
-    print_step "Waiting for GitHub to process tag..."
+    # Step 5: Run GoReleaser to build binaries and create release
+    print_step "Running GoReleaser to build cross-platform binaries..."
+
+    if ! command -v goreleaser &> /dev/null; then
+        print_error "goreleaser not found. Install with: brew install goreleaser"
+    fi
+
+    goreleaser release --clean
+    print_success "GoReleaser completed - binaries built and release created"
+
+    # Step 6: Update Homebrew formula
+    print_step "Waiting for GitHub to process release..."
     sleep 5
 
     TARBALL_URL="https://github.com/${REPO_ORG}/${REPO_NAME}/archive/${NEW_VERSION}.tar.gz"
@@ -189,7 +199,6 @@ main() {
 
     print_success "SHA256: ${SHA256}"
 
-    # Step 6: Update formula with new URL and SHA256
     print_step "Updating Homebrew formula..."
 
     if [[ ! -f $FORMULA_PATH ]]; then
@@ -208,21 +217,6 @@ main() {
     cd - > /dev/null
 
     print_success "Homebrew formula updated in tap"
-
-    # Step 7: Generate changelog
-    print_step "Generating changelog..."
-    CHANGELOG=$(generate_changelog "$CURRENT_VERSION" "$NEW_VERSION")
-
-    # Step 8: Create GitHub release
-    print_step "Creating GitHub release..."
-
-    gh release create "$NEW_VERSION" \
-        --repo "${REPO_ORG}/${REPO_NAME}" \
-        --title "Release ${NEW_VERSION}" \
-        --notes "$CHANGELOG" \
-        --latest
-
-    print_success "GitHub release created"
 
     echo ""
     echo "========================================="
