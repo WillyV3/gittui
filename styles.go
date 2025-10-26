@@ -58,6 +58,12 @@ func GetLoadingStyle() lipgloss.Style {
 		Bold(true)
 }
 
+// GetDimStyle returns the dim style for hints and metadata
+func GetDimStyle() lipgloss.Style {
+	return lipgloss.NewStyle().
+		Foreground(lipgloss.Color(CurrentTheme.BrightBlack))
+}
+
 // Legacy global styles for backward compatibility
 // These are now functions that return themed styles
 var (
@@ -69,6 +75,7 @@ var (
 	statusBarStyle = GetStatusBarStyle()
 	errorStyle     = GetErrorStyle()
 	loadingStyle   = GetLoadingStyle()
+	dimStyle       = GetDimStyle()
 )
 
 // InitStyles must be called after InitTheme() to set up global styles
@@ -81,6 +88,7 @@ func InitStyles() {
 	statusBarStyle = GetStatusBarStyle()
 	errorStyle = GetErrorStyle()
 	loadingStyle = GetLoadingStyle()
+	dimStyle = GetDimStyle()
 }
 
 // Bar chart style for language breakdown

@@ -38,21 +38,19 @@ type ActivityStats struct {
 	HourDistribution map[int]int // hour -> activity count
 }
 
-// CalculatePushRate calculates push frequency for the given granularity
+// CalculatePushRate calculates push frequency based on 7-day rolling average
+// Daily rate: pushes in last 7 days / 7
+// Weekly rate: daily rate × 7
+// Monthly rate: daily rate × 30
 func CalculatePushRate(activities []Activity, granularity PushGranularity) float64 {
-	// Count push events
-	pushCount := 0
-	var oldestPush, newestPush time.Time
+	now := time.Now()
+	sevenDaysAgo := now.AddDate(0, 0, -7)
 
+	// Count push events in the last 7 days
+	pushCount := 0
 	for _, activity := range activities {
-		if activity.Type == "PushEvent" {
+		if activity.Type == "PushEvent" && activity.Timestamp.After(sevenDaysAgo) {
 			pushCount++
-			if oldestPush.IsZero() || activity.Timestamp.Before(oldestPush) {
-				oldestPush = activity.Timestamp
-			}
-			if newestPush.IsZero() || activity.Timestamp.After(newestPush) {
-				newestPush = activity.Timestamp
-			}
 		}
 	}
 
@@ -60,43 +58,26 @@ func CalculatePushRate(activities []Activity, granularity PushGranularity) float
 		return 0.0
 	}
 
-	// Calculate time span
-	timeSpan := newestPush.Sub(oldestPush)
-	if timeSpan == 0 {
-		// If all pushes are at the same time, default to 1 unit of the granularity
-		switch granularity {
-		case PushPerHour:
-			timeSpan = time.Hour
-		case PushPerDay:
-			timeSpan = 24 * time.Hour
-		case PushPerWeek:
-			timeSpan = 7 * 24 * time.Hour
-		case PushPerMonth:
-			timeSpan = 30 * 24 * time.Hour
-		}
-	}
+	// Calculate daily average from last 7 days
+	dailyAverage := float64(pushCount) / 7.0
 
-	// Calculate rate based on granularity
+	// Project based on granularity
 	var rate float64
-	hours := timeSpan.Hours()
-	if hours == 0 {
-		hours = 1 // Avoid division by zero
-	}
-
 	switch granularity {
 	case PushPerHour:
-		rate = float64(pushCount) / hours
+		// Daily average / 24 hours
+		rate = dailyAverage / 24.0
 	case PushPerDay:
-		days := hours / 24
-		rate = float64(pushCount) / days
+		// Already calculated
+		rate = dailyAverage
 	case PushPerWeek:
-		weeks := hours / (24 * 7)
-		rate = float64(pushCount) / weeks
+		// Daily average × 7 days
+		rate = dailyAverage * 7.0
 	case PushPerMonth:
-		months := hours / (24 * 30)
-		rate = float64(pushCount) / months
+		// Daily average × 30 days
+		rate = dailyAverage * 30.0
 	default:
-		rate = float64(pushCount)
+		rate = dailyAverage
 	}
 
 	return rate

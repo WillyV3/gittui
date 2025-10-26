@@ -7,6 +7,7 @@ require (
 	github.com/charmbracelet/bubbletea v1.2.4
 	github.com/charmbracelet/lipgloss v1.1.1-0.20250319133953-166f707985bc
 	github.com/cli/go-gh/v2 v2.12.2
+	github.com/kevin-cantwell/dotmatrix v0.0.0-20190516234139-135e8f4a93cd
 	github.com/willyv3/gogh-themes v1.2.0
 )
 
@@ -20,7 +21,6 @@ require (
 	github.com/cli/shurcooL-graphql v0.0.4 // indirect
 	github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f // indirect
 	github.com/henvic/httpretty v0.0.6 // indirect
-	github.com/kevin-cantwell/dotmatrix v0.0.0-20190516234139-135e8f4a93cd // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect

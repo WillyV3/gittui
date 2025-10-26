@@ -768,20 +768,25 @@ func (m Model) renderActivityMetrics(width int) string {
 	var lines []string
 	lines = append(lines, title, "")
 
-	// Push rate with granularity label
-	var granularityLabel string
+	// Push rate with granularity label and calculation hint
+	var granularityLabel, hint string
 	switch m.pushGranularity {
 	case PushPerHour:
 		granularityLabel = "Pushes/Hour"
+		hint = "(7-day avg ÷ 24)"
 	case PushPerDay:
 		granularityLabel = "Pushes/Day"
+		hint = "(7-day avg)"
 	case PushPerWeek:
 		granularityLabel = "Pushes/Week"
+		hint = "(7-day avg × 7)"
 	case PushPerMonth:
 		granularityLabel = "Pushes/Month"
+		hint = "(7-day avg × 30)"
 	}
 	lines = append(lines, labelStyle.Render(granularityLabel))
 	lines = append(lines, accentStyle.Render(fmt.Sprintf("%.2f", pushRate)))
+	lines = append(lines, dimStyle.Render(hint))
 	lines = append(lines, "")
 
 	// Peak coding hour (always this week)
