@@ -34,3 +34,4 @@ go.work
 
 # Test directories
 test-graph/graph-test
+gittui
