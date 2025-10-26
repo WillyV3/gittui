@@ -21,12 +21,11 @@ type loadingState struct {
 	repositories  bool
 	activities    bool
 	avatar        bool
-	pullRequests  bool
 }
 
 // isLoading returns true if any data is still loading
 func (ls loadingState) isLoading() bool {
-	return ls.profile || ls.contributions || ls.languages || ls.repositories || ls.activities || ls.avatar || ls.pullRequests
+	return ls.profile || ls.contributions || ls.languages || ls.repositories || ls.activities || ls.avatar
 }
 
 // PushGranularity represents the time period for push stats
@@ -52,7 +51,6 @@ type Model struct {
 	repoCount       int
 	repositories    []Repository
 	activities      []Activity
-	pullRequests    []PullRequest
 	avatarImage     image.Image
 	graph           *Graph
 	viewport        viewport.Model
@@ -73,7 +71,6 @@ type languagesMsg struct {
 }
 type repositoriesMsg []Repository
 type activitiesMsg []Activity
-type pullRequestsMsg []PullRequest
 type avatarMsg image.Image
 type errMsg error
 
@@ -88,7 +85,6 @@ func (m Model) Init() tea.Cmd {
 		languages:     true,
 		repositories:  true,
 		activities:    true,
-		pullRequests:  true,
 	}
 
 	return tea.Batch(
@@ -98,7 +94,6 @@ func (m Model) Init() tea.Cmd {
 		fetchLanguages(m.client, m.username, includePrivate),
 		fetchRepositories(m.client, m.username, includePrivate),
 		fetchActivities(m.client, m.username, includePrivate),
-		fetchPullRequests(m.client, m.username, includePrivate),
 	)
 }
 
@@ -219,10 +214,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case avatarMsg:
 		m.avatarImage = msg
 		m.loading.avatar = false
-
-	case pullRequestsMsg:
-		m.pullRequests = msg
-		m.loading.pullRequests = false
 
 	case errMsg:
 		m.err = msg
@@ -675,116 +666,6 @@ func (m Model) renderTopRepos(width int) string {
 		Render(content)
 }
 
-// renderPullRequests renders the PR dashboard
-func (m Model) renderPullRequests(width, height int) string {
-	hMargin := 1
-	if width > 100 {
-		hMargin = 2
-	}
-
-	// Determine if we're showing open or closed PRs
-	var statusLabel string
-	if len(m.pullRequests) > 0 {
-		if m.pullRequests[0].State == "open" {
-			statusLabel = fmt.Sprintf("Pull Requests (%d open)", len(m.pullRequests))
-		} else {
-			statusLabel = "Pull Requests (recent closed)"
-		}
-	} else {
-		statusLabel = "Pull Requests"
-	}
-
-	title := titleStyle.Render(statusLabel)
-
-	if len(m.pullRequests) == 0 {
-		content := lipgloss.JoinVertical(lipgloss.Left, title, "", labelStyle.Render("No pull requests"))
-		return lipgloss.NewStyle().
-			PaddingLeft(hMargin).
-			PaddingRight(hMargin).
-			Render(content)
-	}
-
-	var lines []string
-	lines = append(lines, title, "")
-
-	// Show up to 5 PRs
-	displayPRs := m.pullRequests
-	if len(displayPRs) > 5 {
-		displayPRs = displayPRs[:5]
-	}
-
-	for _, pr := range displayPRs {
-		// Status indicator
-		var statusIcon string
-		var statusColor lipgloss.Style
-
-		// Closed/Merged PRs have priority over review status
-		if pr.State == "closed" {
-			if pr.IsMerged() {
-				statusIcon = "✓"
-				statusColor = lipgloss.NewStyle().Foreground(lipgloss.Color(CurrentTheme.Purple)) // Merged
-			} else {
-				statusIcon = "✗"
-				statusColor = lipgloss.NewStyle().Foreground(lipgloss.Color(CurrentTheme.Red)) // Closed without merge
-			}
-		} else if pr.Draft {
-			statusIcon = "◐"
-			statusColor = lipgloss.NewStyle().Foreground(lipgloss.Color(CurrentTheme.Dark)) // Draft
-		} else {
-			// Open PR - check review status
-			switch pr.ReviewDecision {
-			case "APPROVED":
-				statusIcon = "✓"
-				statusColor = lipgloss.NewStyle().Foreground(lipgloss.Color(CurrentTheme.Green)) // Approved
-			case "CHANGES_REQUESTED":
-				statusIcon = "⚠"
-				statusColor = lipgloss.NewStyle().Foreground(lipgloss.Color(CurrentTheme.Red)) // Changes requested
-			case "REVIEW_REQUIRED":
-				statusIcon = "⏳"
-				statusColor = lipgloss.NewStyle().Foreground(lipgloss.Color(CurrentTheme.Yellow)) // Pending review
-			default:
-				statusIcon = "●"
-				statusColor = lipgloss.NewStyle().Foreground(lipgloss.Color(CurrentTheme.Gray)) // No reviews
-			}
-		}
-
-		// PR title (truncate if too long)
-		prTitle := pr.Title
-		maxTitleWidth := width - hMargin*2 - 20
-		if len(prTitle) > maxTitleWidth {
-			prTitle = prTitle[:maxTitleWidth-3] + "..."
-		}
-
-		// PR line: [icon] title
-		prLine := statusColor.Render(statusIcon) + " " + baseStyle.Render(prTitle)
-		lines = append(lines, prLine)
-
-		// Details line: repo • reviews
-		details := labelStyle.Render(pr.Repo.FullName)
-		if pr.ApprovedCount > 0 {
-			details += accentStyle.Render(fmt.Sprintf("  ✓ %d approved", pr.ApprovedCount))
-		}
-		if pr.ChangesCount > 0 {
-			details += statusColor.Render(fmt.Sprintf("  ⚠ %d changes", pr.ChangesCount))
-		}
-		if pr.ApprovedCount == 0 && pr.ChangesCount == 0 && pr.CommentCount > 0 {
-			details += labelStyle.Render(fmt.Sprintf("  💬 %d comments", pr.CommentCount))
-		}
-		if pr.ReviewDecision == "" {
-			details += subtleStyle.Render("  ⏳ awaiting review")
-		}
-
-		lines = append(lines, "  "+details)
-		lines = append(lines, "") // Spacing
-	}
-
-	content := lipgloss.JoinVertical(lipgloss.Left, lines...)
-	return lipgloss.NewStyle().
-		PaddingLeft(hMargin).
-		PaddingRight(hMargin).
-		Render(content)
-}
-
 // renderColumnsRow renders a multi-column layout (DRY and scalable)
 // Add new columns by adding to the columns slice
 func (m Model) renderColumnsRow(width, height int) string {
@@ -795,7 +676,6 @@ func (m Model) renderColumnsRow(width, height int) string {
 	}
 
 	columns := []column{
-		{render: m.renderPullRequests, name: "prs"},
 		{render: m.renderActivity, name: "activity"},
 		// Future: add more columns here
 		// {render: m.renderIssues, name: "issues"},
@@ -1232,16 +1112,6 @@ func fetchAvatar(avatarURL string) tea.Cmd {
 			return avatarMsg(nil)
 		}
 		return avatarMsg(img)
-	}
-}
-
-func fetchPullRequests(client *GitHubClient, username string, publicOnly bool) tea.Cmd {
-	return func() tea.Msg {
-		prs, err := client.FetchPullRequests(username, publicOnly)
-		if err != nil {
-			return errMsg(err)
-		}
-		return pullRequestsMsg(prs)
 	}
 }
 

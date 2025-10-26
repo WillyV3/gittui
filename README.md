@@ -84,11 +84,11 @@ This allows you to:
 ## Architecture
 
 Built with:
-- [Bubble Tea](https://github.com/charmbracelet/bubbletea) - Terminal UI framework
-- [Lipgloss](https://github.com/charmbracelet/lipgloss) - Terminal styling
-- [Bubbles](https://github.com/charmbracelet/bubbles) - TUI components
+- [Charmbracelet](https://github.com/charmbracelet) ecosystem - Terminal UI framework
 - [dotmatrix](https://github.com/kevin-cantwell/dotmatrix) - Braille image rendering
 - GitHub REST API and GraphQL API
+
+Color schemes sourced from [Gogh](https://github.com/Gogh-Co/Gogh) terminal theme collection.
 
 ## Development
 
