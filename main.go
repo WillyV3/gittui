@@ -376,7 +376,15 @@ func (m Model) renderBottomSection(width int) string {
 		hMargin = 2
 	}
 
-	// Left side: ASCII art and avatar
+	// Profile info box (top layer, on the right)
+	profileInfo := m.renderProfileInfo()
+	profileWithBorder := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color(CurrentTheme.Blue)).
+		Padding(1, 2).
+		Render(profileInfo)
+
+	// Left side: Avatar and ASCII art (bottom layer)
 	var leftComponents []string
 
 	// Add braille avatar if available
@@ -398,26 +406,89 @@ func (m Model) renderBottomSection(width int) string {
 
 	leftContent := lipgloss.JoinVertical(lipgloss.Left, leftComponents...)
 
-	// Right side: Profile info with border
-	profileInfo := m.renderProfileInfo()
-	profileWithBorder := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color(CurrentTheme.Blue)).
-		Padding(1, 2).
-		Render(profileInfo)
+	// Calculate spacing between left content and profile
+	spacing := 1 // Minimal spacing to bring profile very close
 
-	// Join horizontally with spacing, align to center
-	combined := lipgloss.JoinHorizontal(
-		lipgloss.Center,
-		leftContent,
-		strings.Repeat(" ", 4), // Space between left and right
-		profileWithBorder,
-	)
+	// Split into lines and insert profile box
+	leftLines := strings.Split(leftContent, "\n")
+	profileLines := strings.Split(profileWithBorder, "\n")
+
+	var finalLines []string
+	for i := 0; i < len(leftLines); i++ {
+		line := leftLines[i]
+		if i < len(profileLines) {
+			// Calculate position based on actual line width (allows overlap with ASCII art)
+			lineWidth := lipgloss.Width(line)
+			profileX := lineWidth + spacing
+
+			// Ensure minimum spacing from current line
+			if profileX < spacing {
+				profileX = spacing
+			}
+
+			// Add profile line to the right of this specific line
+			paddingNeeded := profileX - lineWidth
+			if paddingNeeded > 0 {
+				line = line + strings.Repeat(" ", paddingNeeded) + profileLines[i]
+			} else {
+				// If line is too wide, just add spacing
+				line = line + strings.Repeat(" ", spacing) + profileLines[i]
+			}
+		}
+		finalLines = append(finalLines, line)
+	}
+
+	// Add remaining profile lines if profile is taller (just add spacing at start)
+	for i := len(leftLines); i < len(profileLines); i++ {
+		line := strings.Repeat(" ", spacing) + profileLines[i]
+		finalLines = append(finalLines, line)
+	}
+
+	combined := strings.Join(finalLines, "\n")
 
 	return lipgloss.NewStyle().
 		PaddingLeft(hMargin).
 		PaddingRight(hMargin).
 		Render(combined)
+}
+
+// wrapText wraps text to specified width, breaking on word boundaries
+func wrapText(text string, width int) []string {
+	if len(text) <= width {
+		return []string{text}
+	}
+
+	var lines []string
+	words := strings.Fields(text)
+
+	currentLine := ""
+	for _, word := range words {
+		// If adding this word would exceed width
+		if len(currentLine)+len(word)+1 > width {
+			// If current line is empty and word alone is too long, truncate it
+			if currentLine == "" {
+				lines = append(lines, word[:width-3]+"...")
+				continue
+			}
+			// Save current line and start new one
+			lines = append(lines, currentLine)
+			currentLine = word
+		} else {
+			// Add word to current line
+			if currentLine == "" {
+				currentLine = word
+			} else {
+				currentLine += " " + word
+			}
+		}
+	}
+
+	// Add last line
+	if currentLine != "" {
+		lines = append(lines, currentLine)
+	}
+
+	return lines
 }
 
 // renderProfileInfo renders profile information (moved from header)
@@ -426,51 +497,61 @@ func (m Model) renderProfileInfo() string {
 		return ""
 	}
 
+	// Set max width for profile box content
+	maxWidth := 40
+
 	var info []string
 
-	// Name and username
-	title := titleStyle.Render(fmt.Sprintf("%s (@%s)", m.profile.Name, m.profile.Login))
+	// Name and username - wrap if needed
+	nameText := fmt.Sprintf("%s (@%s)", m.profile.Name, m.profile.Login)
+	title := titleStyle.Render(nameText)
 	info = append(info, title)
 	info = append(info, "")
 
-	// Bio
+	// Bio - wrap text to multiple lines
 	if m.profile.Bio != "" {
-		bio := baseStyle.Render(m.profile.Bio)
-		info = append(info, bio)
+		bioLines := wrapText(m.profile.Bio, maxWidth)
+		for _, line := range bioLines {
+			info = append(info, baseStyle.Render(line))
+		}
 		info = append(info, "")
 	}
 
-	// Location and company
-	var meta []string
+	// Location and company - truncate if needed
 	if m.profile.Location != "" {
-		meta = append(meta, labelStyle.Render("Location: ")+baseStyle.Render(m.profile.Location))
+		loc := m.profile.Location
+		if len(loc) > 20 {
+			loc = loc[:17] + "..."
+		}
+		info = append(info, labelStyle.Render("Loc: ")+baseStyle.Render(loc))
 	}
 	if m.profile.Company != "" {
-		meta = append(meta, labelStyle.Render("Company: ")+baseStyle.Render(m.profile.Company))
+		comp := m.profile.Company
+		if len(comp) > 20 {
+			comp = comp[:17] + "..."
+		}
+		info = append(info, labelStyle.Render("Co: ")+baseStyle.Render(comp))
 	}
-	if len(meta) > 0 {
-		info = append(info, strings.Join(meta, " | "))
+	if m.profile.Location != "" || m.profile.Company != "" {
 		info = append(info, "")
 	}
 
-	// Stats
+	// Stats - compact format
 	repoCount := m.repoCount
 	if repoCount == 0 {
 		repoCount = m.profile.PublicRepos
 	}
-	stats := []string{
-		fmt.Sprintf("%s %d", labelStyle.Render("Repos:"), repoCount),
-		fmt.Sprintf("%s %d", labelStyle.Render("Gists:"), m.profile.PublicGists),
-		fmt.Sprintf("%s %d", labelStyle.Render("Followers:"), m.profile.Followers),
-		fmt.Sprintf("%s %d", labelStyle.Render("Following:"), m.profile.Following),
-	}
-	statsLine := baseStyle.Render(strings.Join(stats, " | "))
-	info = append(info, statsLine)
+	info = append(info, fmt.Sprintf("%s %d | %s %d",
+		labelStyle.Render("Repos:"), repoCount,
+		labelStyle.Render("Gists:"), m.profile.PublicGists))
+	info = append(info, fmt.Sprintf("%s %d | %s %d",
+		labelStyle.Render("Followers:"), m.profile.Followers,
+		labelStyle.Render("Following:"), m.profile.Following))
 	info = append(info, "")
 
 	// Member since
-	memberSince := labelStyle.Render("Member since: ") +
-		baseStyle.Render(m.profile.CreatedAt.Format("January 2006"))
+	memberSince := labelStyle.Render("Member: ") +
+		baseStyle.Render(m.profile.CreatedAt.Format("Jan 2006"))
 	info = append(info, memberSince)
 
 	return lipgloss.JoinVertical(lipgloss.Left, info...)
@@ -497,7 +578,7 @@ func (m Model) renderGraphSection(width int) string {
 		Render(graph)
 }
 
-// renderStatsRow renders languages, streaks, and top repos in 3 columns
+// renderStatsRow renders languages, streaks, activity metrics, and top repos in 4 columns
 func (m Model) renderStatsRow(width int) string {
 	// Calculate horizontal padding based on available space
 	hPadding := 2 // Horizontal padding between columns
@@ -505,9 +586,9 @@ func (m Model) renderStatsRow(width int) string {
 		hPadding = 1 // Less padding on narrow terminals
 	}
 
-	// Divide width into 3 columns with padding between
-	availableWidth := width - (hPadding * 2) // 2 gaps between 3 columns
-	colWidth := availableWidth / 3
+	// Divide width into 4 columns with padding between
+	availableWidth := width - (hPadding * 3) // 3 gaps between 4 columns
+	colWidth := availableWidth / 4
 
 	// Render each column with padding
 	languagesContent := m.renderLanguages(colWidth)
@@ -520,9 +601,14 @@ func (m Model) renderStatsRow(width int) string {
 		PaddingRight(hPadding).
 		Render(streaksContent)
 
+	activityMetricsContent := m.renderActivityMetrics(colWidth)
+	activityMetrics := lipgloss.NewStyle().
+		PaddingRight(hPadding).
+		Render(activityMetricsContent)
+
 	repos := m.renderTopRepos(colWidth)
 
-	return lipgloss.JoinHorizontal(lipgloss.Top, languages, streaks, repos)
+	return lipgloss.JoinHorizontal(lipgloss.Top, languages, streaks, activityMetrics, repos)
 }
 
 // renderLanguages renders top programming languages with bar charts
@@ -590,12 +676,11 @@ func (m Model) renderStreaks(width int) string {
 	stats := CalculateStats(m.contributions)
 	currentStreak := calculateCurrentStreak(m.contributions)
 	longestStreak := calculateLongestStreak(m.contributions)
-	pushRate := CalculatePushStats(m.activities, m.pushGranularity)
 
 	var lines []string
 	lines = append(lines, title, "")
 
-	// Show 4 stats
+	// Show 3 stats (push rate moved to Activity Metrics column)
 	lines = append(lines, labelStyle.Render("Total Contributions"))
 	lines = append(lines, accentStyle.Render(fmt.Sprintf("%d", stats.Total)))
 	lines = append(lines, "")
@@ -606,22 +691,6 @@ func (m Model) renderStreaks(width int) string {
 
 	lines = append(lines, labelStyle.Render("Longest Streak"))
 	lines = append(lines, accentStyle.Render(fmt.Sprintf("%d days", longestStreak)))
-	lines = append(lines, "")
-
-	// Push frequency stat with configurable granularity
-	var granularityLabel string
-	switch m.pushGranularity {
-	case PushPerHour:
-		granularityLabel = "Pushes/Hour"
-	case PushPerDay:
-		granularityLabel = "Pushes/Day"
-	case PushPerWeek:
-		granularityLabel = "Pushes/Week"
-	case PushPerMonth:
-		granularityLabel = "Pushes/Month"
-	}
-	lines = append(lines, labelStyle.Render(granularityLabel))
-	lines = append(lines, accentStyle.Render(fmt.Sprintf("%.2f", pushRate)))
 	lines = append(lines, "")
 
 	content := lipgloss.JoinVertical(lipgloss.Left, lines...)
@@ -671,6 +740,54 @@ func (m Model) renderTopRepos(width int) string {
 		// Add spacing between repos
 		lines = append(lines, "")
 	}
+
+	content := lipgloss.JoinVertical(lipgloss.Left, lines...)
+	return lipgloss.NewStyle().
+		PaddingLeft(hMargin).
+		Render(content)
+}
+
+// renderActivityMetrics renders activity-based metrics (push rate, peak hour, etc.)
+func (m Model) renderActivityMetrics(width int) string {
+	// Calculate internal padding
+	hMargin := 1
+
+	title := titleStyle.Render("Activity Metrics")
+
+	if len(m.activities) == 0 {
+		content := lipgloss.JoinVertical(lipgloss.Left, title, "", labelStyle.Render("No activity data"))
+		return lipgloss.NewStyle().
+			PaddingLeft(hMargin).
+			Render(content)
+	}
+
+	// Calculate stats
+	pushRate := CalculatePushStats(m.activities, m.pushGranularity)
+	peakHour, _ := CalculatePeakCodingHour(m.activities, ThisWeek)
+
+	var lines []string
+	lines = append(lines, title, "")
+
+	// Push rate with granularity label
+	var granularityLabel string
+	switch m.pushGranularity {
+	case PushPerHour:
+		granularityLabel = "Pushes/Hour"
+	case PushPerDay:
+		granularityLabel = "Pushes/Day"
+	case PushPerWeek:
+		granularityLabel = "Pushes/Week"
+	case PushPerMonth:
+		granularityLabel = "Pushes/Month"
+	}
+	lines = append(lines, labelStyle.Render(granularityLabel))
+	lines = append(lines, accentStyle.Render(fmt.Sprintf("%.2f", pushRate)))
+	lines = append(lines, "")
+
+	// Peak coding hour (always this week)
+	lines = append(lines, labelStyle.Render("Peak Hour (This Week)"))
+	lines = append(lines, accentStyle.Render(peakHour))
+	lines = append(lines, "")
 
 	content := lipgloss.JoinVertical(lipgloss.Left, lines...)
 	return lipgloss.NewStyle().
@@ -1042,72 +1159,9 @@ func calculateLongestStreak(contributions []Contribution) int {
 }
 
 // CalculatePushStats calculates push frequency based on granularity
+// Deprecated: Use CalculatePushRate from stats.go instead
 func CalculatePushStats(activities []Activity, granularity PushGranularity) float64 {
-	if len(activities) == 0 {
-		return 0.0
-	}
-
-	// Count push events
-	pushCount := 0
-	var oldestPush, newestPush time.Time
-
-	for _, activity := range activities {
-		if activity.Type == "PushEvent" {
-			pushCount++
-			if oldestPush.IsZero() || activity.Timestamp.Before(oldestPush) {
-				oldestPush = activity.Timestamp
-			}
-			if newestPush.IsZero() || activity.Timestamp.After(newestPush) {
-				newestPush = activity.Timestamp
-			}
-		}
-	}
-
-	if pushCount == 0 {
-		return 0.0
-	}
-
-	// Calculate time span
-	timeSpan := newestPush.Sub(oldestPush)
-	if timeSpan == 0 {
-		// If all pushes are at the same time, default to 1 unit of the granularity
-		switch granularity {
-		case PushPerHour:
-			timeSpan = time.Hour
-		case PushPerDay:
-			timeSpan = 24 * time.Hour
-		case PushPerWeek:
-			timeSpan = 7 * 24 * time.Hour
-		case PushPerMonth:
-			timeSpan = 30 * 24 * time.Hour
-		}
-	}
-
-	// Calculate rate based on granularity
-	// Always calculate based on actual time span and scale to desired unit
-	var rate float64
-	hours := timeSpan.Hours()
-	if hours == 0 {
-		hours = 1 // Avoid division by zero
-	}
-
-	switch granularity {
-	case PushPerHour:
-		rate = float64(pushCount) / hours
-	case PushPerDay:
-		days := hours / 24
-		rate = float64(pushCount) / days
-	case PushPerWeek:
-		weeks := hours / (24 * 7)
-		rate = float64(pushCount) / weeks
-	case PushPerMonth:
-		months := hours / (24 * 30)
-		rate = float64(pushCount) / months
-	default:
-		rate = float64(pushCount)
-	}
-
-	return rate
+	return CalculatePushRate(activities, granularity)
 }
 
 // formatTimeAgo formats a timestamp as "X ago"
