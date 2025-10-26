@@ -6,6 +6,10 @@ gittui
 *.so
 *.dylib
 
+# VHS demo files
+demo.tape
+*.gif
+
 # Test binary
 *.test
 
