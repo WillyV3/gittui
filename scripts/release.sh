@@ -132,24 +132,12 @@ main() {
         print_error "Invalid bump type. Use: major, minor, or patch"
     fi
 
-    # Step 1: Commit any pending changes
-    print_step "Checking for changes..."
+    # Step 1: Check for uncommitted changes
+    print_step "Checking for uncommitted changes..."
     if [[ -n $(git status -s) ]]; then
-        print_warning "Uncommitted changes found. Adding and committing..."
-
-        git add -A
-
-        if [[ -n $CUSTOM_MESSAGE ]]; then
-            git commit -m "$CUSTOM_MESSAGE"
-        else
-            # Generate commit message from changes
-            COMMIT_MSG="Release prep: $(git diff --cached --name-only | head -3 | xargs basename | paste -sd ', ' -)"
-            git commit -m "$COMMIT_MSG"
-        fi
-        print_success "Changes committed"
-    else
-        print_success "No uncommitted changes"
+        print_error "Uncommitted changes found. Please commit and push your changes before releasing."
     fi
+    print_success "Working directory clean"
 
     # Step 2: Get version info
     CURRENT_VERSION=$(get_current_version)
@@ -169,10 +157,9 @@ main() {
     print_step "Creating git tag ${NEW_VERSION}..."
     git tag -a "$NEW_VERSION" -m "Release $NEW_VERSION"
 
-    print_step "Pushing to GitHub..."
-    git push origin main
+    print_step "Pushing tag to GitHub..."
     git push origin "$NEW_VERSION"
-    print_success "Tag and code pushed to GitHub"
+    print_success "Tag pushed to GitHub"
 
     # Step 5: Run GoReleaser to build binaries and create release
     print_step "Running GoReleaser to build cross-platform binaries..."
