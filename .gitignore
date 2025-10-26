@@ -6,6 +6,9 @@ gittui
 *.so
 *.dylib
 
+# GoReleaser output
+dist/
+
 # VHS demo files
 demo.tape
 *.gif
@@ -34,4 +37,3 @@ go.work
 
 # Test directories
 test-graph/graph-test
-gittui

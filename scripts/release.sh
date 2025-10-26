@@ -181,8 +181,21 @@ main() {
         print_error "goreleaser not found. Install with: brew install goreleaser"
     fi
 
-    goreleaser release --clean
-    print_success "GoReleaser completed - binaries built and release created"
+    # Export GitHub token from gh CLI for GoReleaser
+    export GITHUB_TOKEN=$(gh auth token)
+    if [[ -z $GITHUB_TOKEN ]]; then
+        print_error "Failed to get GitHub token. Run: gh auth login"
+    fi
+
+    # Remove local binary if it exists (prevents dirty git state)
+    rm -f gittui
+
+    # Run GoReleaser
+    if goreleaser release --clean; then
+        print_success "GoReleaser completed - binaries built and release created"
+    else
+        print_error "GoReleaser failed. Check output above for details."
+    fi
 
     # Step 6: Update Homebrew formula
     print_step "Waiting for GitHub to process release..."
