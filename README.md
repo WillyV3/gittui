@@ -86,10 +86,11 @@ This allows you to:
 
 Built with:
 - [Charmbracelet](https://github.com/charmbracelet) ecosystem - Terminal UI framework
-- [dotmatrix](https://github.com/kevin-cantwell/dotmatrix) - Braille image rendering
-- GitHub REST API and GraphQL API
+- GH CLI
 
 Color schemes sourced from [Gogh](https://github.com/Gogh-Co/Gogh) terminal theme collection.
+
+I used their theme files to make a super fast gogh-themes package for the app https://github.com/willyv3/gogh-themes
 
 ## Development
 
