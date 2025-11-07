@@ -9,10 +9,6 @@ gittui
 # GoReleaser output
 dist/
 
-# VHS demo files
-demo.tape
-*.gif
-
 # Test binary
 *.test
 
@@ -34,6 +30,3 @@ go.work
 
 # macOS
 .DS_Store
-
-# Test directories
-test-graph/graph-test

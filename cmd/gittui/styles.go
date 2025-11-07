@@ -5,17 +5,23 @@ import "github.com/charmbracelet/lipgloss"
 // Styles are initialized after theme is loaded
 // All styles dynamically use CurrentTheme for colors
 
-// GetBaseStyle returns the base text style with theme foreground color
+// GetBaseStyle returns the base text style with adaptive foreground for good contrast
 func GetBaseStyle() lipgloss.Style {
 	return lipgloss.NewStyle().
-		Foreground(lipgloss.Color(CurrentTheme.Foreground))
+		Foreground(lipgloss.AdaptiveColor{
+			Light: CurrentTheme.Foreground,
+			Dark:  CurrentTheme.BrightWhite,
+		})
 }
 
-// GetTitleStyle returns the title style with theme blue color
+// GetTitleStyle returns the title style with adaptive blue for good contrast
 func GetTitleStyle() lipgloss.Style {
 	return lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color(CurrentTheme.Blue))
+		Foreground(lipgloss.AdaptiveColor{
+			Light: CurrentTheme.Blue,
+			Dark:  CurrentTheme.BrightBlue,
+		})
 }
 
 // GetLabelStyle returns the label style with theme gray color
@@ -24,10 +30,13 @@ func GetLabelStyle() lipgloss.Style {
 		Foreground(lipgloss.Color(CurrentTheme.Gray))
 }
 
-// GetAccentStyle returns the accent style with theme green color
+// GetAccentStyle returns the accent style with adaptive green for good contrast
 func GetAccentStyle() lipgloss.Style {
 	return lipgloss.NewStyle().
-		Foreground(lipgloss.Color(CurrentTheme.Green)).
+		Foreground(lipgloss.AdaptiveColor{
+			Light: CurrentTheme.Green,
+			Dark:  CurrentTheme.BrightGreen,
+		}).
 		Bold(true)
 }
 

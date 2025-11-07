@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"sort"
 
@@ -173,6 +174,18 @@ func GetCurrentThemeName() string {
 // GetThemeCount returns the total number of available themes
 func GetThemeCount() int {
 	return len(themes)
+}
+
+// SetThemeByName sets the current theme by name
+func SetThemeByName(name string) error {
+	theme, exists := themes[name]
+	if !exists {
+		return fmt.Errorf("theme '%s' not found", name)
+	}
+
+	CurrentTheme = theme
+	currentThemeName = name
+	return nil
 }
 
 // generateShade generates a lighter or darker shade of a hex color

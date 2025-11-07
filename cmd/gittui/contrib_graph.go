@@ -107,7 +107,10 @@ func (g *Graph) buildGrid() [daysPerWeek][weeksToDisplay]int {
 func (g *Graph) renderTitle() string {
 	return lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color(CurrentTheme.Blue)).
+		Foreground(lipgloss.AdaptiveColor{
+			Light: CurrentTheme.Blue,
+			Dark:  CurrentTheme.BrightBlue,
+		}).
 		Render(g.title)
 }
 
@@ -152,7 +155,10 @@ func (g *Graph) renderMonthLabels() string {
 	}
 
 	styled := lipgloss.NewStyle().
-		Foreground(lipgloss.Color(CurrentTheme.Gray)).
+		Foreground(lipgloss.AdaptiveColor{
+			Light: CurrentTheme.Gray,
+			Dark:  CurrentTheme.BrightBlack,
+		}).
 		Render(string(labelChars))
 
 	return strings.Repeat(" ", dayLabelWidth) + styled
@@ -169,7 +175,10 @@ func (g *Graph) renderGrid(grid [daysPerWeek][weeksToDisplay]int) string {
 
 		// Add day label
 		label := lipgloss.NewStyle().
-			Foreground(lipgloss.Color(CurrentTheme.Gray)).
+			Foreground(lipgloss.AdaptiveColor{
+				Light: CurrentTheme.Gray,
+				Dark:  CurrentTheme.BrightBlack,
+			}).
 			Width(dayLabelWidth).
 			Render(dayLabels[day])
 		row.WriteString(label)
@@ -235,7 +244,10 @@ func (g *Graph) renderLegend() string {
 	var parts []string
 
 	parts = append(parts, lipgloss.NewStyle().
-		Foreground(lipgloss.Color(CurrentTheme.Gray)).
+		Foreground(lipgloss.AdaptiveColor{
+			Light: CurrentTheme.Gray,
+			Dark:  CurrentTheme.BrightBlack,
+		}).
 		Render("Less"))
 
 	for level := 0; level < 5; level++ {
@@ -247,7 +259,10 @@ func (g *Graph) renderLegend() string {
 	}
 
 	parts = append(parts, lipgloss.NewStyle().
-		Foreground(lipgloss.Color(CurrentTheme.Gray)).
+		Foreground(lipgloss.AdaptiveColor{
+			Light: CurrentTheme.Gray,
+			Dark:  CurrentTheme.BrightBlack,
+		}).
 		Render("More"))
 
 	return strings.Repeat(" ", dayLabelWidth) + strings.Join(parts, "")
@@ -275,13 +290,19 @@ func renderWidthWarning(currentWidth, minWidth int) string {
 	// Build styled box
 	style := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color(CurrentTheme.Blue)).
+		BorderForeground(lipgloss.AdaptiveColor{
+			Light: CurrentTheme.Blue,
+			Dark:  CurrentTheme.BrightBlue,
+		}).
 		Padding(1, 2).
 		Width(maxBoxWidth).
 		Align(lipgloss.Center)
 
 	content := lipgloss.NewStyle().
-		Foreground(lipgloss.Color(CurrentTheme.Gray)).
+		Foreground(lipgloss.AdaptiveColor{
+			Light: CurrentTheme.Gray,
+			Dark:  CurrentTheme.BrightBlack,
+		}).
 		Bold(true).
 		Render(message)
 

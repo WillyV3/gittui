@@ -150,7 +150,7 @@ main() {
 
     # Step 3: Build Go binary to ensure it compiles
     print_step "Building gittui..."
-    go build -o gittui .
+    go build -o gittui ./cmd/gittui
     print_success "Build successful"
 
     # Step 4: Create and push tag

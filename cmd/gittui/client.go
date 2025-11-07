@@ -29,13 +29,9 @@ type GitHubClient struct {
 // - gh CLI authentication
 // - Proper token storage and security
 // - No manual exec.Command calls
+// Falls back to unauthenticated client if no auth is available (public data only)
 func NewGitHubClient() (*GitHubClient, error) {
-	// Use official go-gh to get authenticated HTTP client
-	// This automatically handles:
-	// 1. Checking GITHUB_TOKEN/GH_TOKEN env vars
-	// 2. Using gh CLI auth if available
-	// 3. Proper OAuth token handling
-	// 4. Security best practices
+	// Try to get authenticated HTTP client first
 	opts := &ghAPI.ClientOptions{
 		Host:    "github.com",
 		Timeout: 10 * time.Second,
@@ -43,12 +39,19 @@ func NewGitHubClient() (*GitHubClient, error) {
 
 	httpClient, err := ghAPI.NewHTTPClient(*opts)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create authenticated client: %w\nRun 'gh auth login' or set GITHUB_TOKEN environment variable", err)
+		// Fall back to unauthenticated client (public data only)
+		httpClient = &http.Client{
+			Timeout: 10 * time.Second,
+		}
 	}
 
-	// Verify authentication works
-	if token, _ := auth.TokenForHost("github.com"); token == "" {
-		return nil, fmt.Errorf("no GitHub authentication found\nRun 'gh auth login' or set GITHUB_TOKEN environment variable")
+	// Check if we have authentication
+	token, _ := auth.TokenForHost("github.com")
+	if token == "" {
+		// No authentication - use basic HTTP client
+		httpClient = &http.Client{
+			Timeout: 10 * time.Second,
+		}
 	}
 
 	return &GitHubClient{
@@ -65,6 +68,10 @@ type Repository struct {
 	Stars       int    `json:"stargazers_count"`
 	Forks       int    `json:"forks_count"`
 	Private     bool   `json:"private"`
+	Owner       struct {
+		Login string `json:"login"`
+		Type  string `json:"type"` // "User" or "Organization"
+	} `json:"owner"`
 }
 
 // ProfileData contains user profile information
@@ -98,6 +105,72 @@ type Activity struct {
 	Public    bool
 }
 
+
+// FetchOrgAvatars fetches avatar URLs for given organizations
+func (c *GitHubClient) FetchOrgAvatars(orgNames []string) (map[string]string, error) {
+	avatars := make(map[string]string)
+
+	for _, orgName := range orgNames {
+		url := fmt.Sprintf("%s/orgs/%s", githubAPIURL, orgName)
+
+		req, err := http.NewRequest("GET", url, nil)
+		if err != nil {
+			continue // Skip this org on error
+		}
+		req.Header.Set("Accept", "application/vnd.github.v3+json")
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			continue // Skip this org on error
+		}
+
+		if resp.StatusCode == 200 {
+			var org struct {
+				AvatarURL string `json:"avatar_url"`
+			}
+			if err := json.NewDecoder(resp.Body).Decode(&org); err == nil {
+				avatars[orgName] = org.AvatarURL
+			}
+		}
+		resp.Body.Close()
+	}
+
+	return avatars, nil
+}
+
+// GetAuthenticatedUser returns the login of the authenticated user
+// Returns empty string if not authenticated
+func (c *GitHubClient) GetAuthenticatedUser() (string, error) {
+	req, err := http.NewRequest("GET", githubAPIURL+"/user", nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == 401 || resp.StatusCode == 403 {
+		// Not authenticated
+		return "", nil
+	}
+
+	if resp.StatusCode != 200 {
+		return "", fmt.Errorf("failed to get authenticated user: status %d", resp.StatusCode)
+	}
+
+	var user struct {
+		Login string `json:"login"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&user); err != nil {
+		return "", err
+	}
+
+	return user.Login, nil
+}
 
 // FetchProfile fetches user profile data
 // includePrivate: if true, uses /user endpoint to get private counts (only works for authenticated user)
@@ -305,6 +378,13 @@ func (c *GitHubClient) FetchContributions(username string) ([]Contribution, erro
 // FetchLanguages fetches top language statistics and total repo count
 // includePrivate: if true, uses /user/repos with affiliation to get all repos including org repos
 func (c *GitHubClient) FetchLanguages(username string, includePrivate bool) ([]LanguageStats, int, error) {
+	// Load config to get org filtering preferences
+	config, err := LoadConfig()
+	if err != nil {
+		// Fall back to defaults if config can't be loaded
+		config = DefaultConfig()
+	}
+
 	var baseURL string
 
 	if includePrivate {
@@ -313,12 +393,16 @@ func (c *GitHubClient) FetchLanguages(username string, includePrivate bool) ([]L
 		baseURL = fmt.Sprintf("%s/users/%s/repos?per_page=100", githubAPIURL, username)
 	}
 
-	// Fetch all repos with pagination
+	// Fetch all repos with pagination - need owner info for filtering
 	var allRepos []struct {
 		Name     string `json:"name"`
 		Language string `json:"language"`
 		Fork     bool   `json:"fork"`
 		Private  bool   `json:"private"`
+		Owner    struct {
+			Login string `json:"login"`
+			Type  string `json:"type"` // "User" or "Organization"
+		} `json:"owner"`
 	}
 
 	page := 1
@@ -342,6 +426,10 @@ func (c *GitHubClient) FetchLanguages(username string, includePrivate bool) ([]L
 			Language string `json:"language"`
 			Fork     bool   `json:"fork"`
 			Private  bool   `json:"private"`
+			Owner    struct {
+				Login string `json:"login"`
+				Type  string `json:"type"`
+			} `json:"owner"`
 		}
 
 		if err := json.NewDecoder(resp.Body).Decode(&repos); err != nil {
@@ -364,13 +452,47 @@ func (c *GitHubClient) FetchLanguages(username string, includePrivate bool) ([]L
 		page++
 	}
 
-	// Total repo count
-	totalRepoCount := len(allRepos)
+	// Filter repos based on config preferences
+	var filteredRepos []struct {
+		Name     string `json:"name"`
+		Language string `json:"language"`
+		Fork     bool   `json:"fork"`
+		Private  bool   `json:"private"`
+		Owner    struct {
+			Login string `json:"login"`
+			Type  string `json:"type"`
+		} `json:"owner"`
+	}
+
+	// Build allowed orgs map for O(1) lookup
+	allowedOrgsMap := make(map[string]bool)
+	for _, org := range config.AllowedOrgs {
+		allowedOrgsMap[org] = true
+	}
+
+	for _, repo := range allRepos {
+		// Public repos are always included
+		if !repo.Private {
+			filteredRepos = append(filteredRepos, repo)
+			continue
+		}
+
+		// Private repos - apply filtering
+		isPersonal := repo.Owner.Type == "User" && repo.Owner.Login == username
+		isAllowedOrg := repo.Owner.Type == "Organization" && allowedOrgsMap[repo.Owner.Login]
+
+		if (isPersonal && config.IncludePersonalPrivate) || isAllowedOrg {
+			filteredRepos = append(filteredRepos, repo)
+		}
+	}
+
+	// Total repo count (after filtering)
+	totalRepoCount := len(filteredRepos)
 
 	// Count languages (excluding forks)
 	langCount := make(map[string]int)
 	total := 0
-	for _, repo := range allRepos {
+	for _, repo := range filteredRepos {
 		if !repo.Fork && repo.Language != "" {
 			langCount[repo.Language]++
 			total++
@@ -406,6 +528,13 @@ func (c *GitHubClient) FetchLanguages(username string, includePrivate bool) ([]L
 
 // FetchTopRepositories fetches user's top repositories sorted by stars
 func (c *GitHubClient) FetchTopRepositories(username string, includePrivate bool) ([]Repository, error) {
+	// Load config to get org filtering preferences
+	config, err := LoadConfig()
+	if err != nil {
+		// Fall back to defaults if config can't be loaded
+		config = DefaultConfig()
+	}
+
 	var baseURL string
 
 	if includePrivate {
@@ -449,44 +578,56 @@ func (c *GitHubClient) FetchTopRepositories(username string, includePrivate bool
 		page++
 	}
 
+	// Filter repos based on config preferences
+	var filteredRepos []Repository
+
+	// Build allowed orgs map for O(1) lookup
+	allowedOrgsMap := make(map[string]bool)
+	for _, org := range config.AllowedOrgs {
+		allowedOrgsMap[org] = true
+	}
+
+	for _, repo := range allRepos {
+		// Public repos are always included
+		if !repo.Private {
+			filteredRepos = append(filteredRepos, repo)
+			continue
+		}
+
+		// Private repos - apply filtering
+		isPersonal := repo.Owner.Type == "User" && repo.Owner.Login == username
+		isAllowedOrg := repo.Owner.Type == "Organization" && allowedOrgsMap[repo.Owner.Login]
+
+		if (isPersonal && config.IncludePersonalPrivate) || isAllowedOrg {
+			filteredRepos = append(filteredRepos, repo)
+		}
+	}
+
 	// Sort by stars (stargazers_count) - GitHub API doesn't support server-side sorting by stars
-	sort.Slice(allRepos, func(i, j int) bool {
-		return allRepos[i].Stars > allRepos[j].Stars
+	sort.Slice(filteredRepos, func(i, j int) bool {
+		return filteredRepos[i].Stars > filteredRepos[j].Stars
 	})
 
 	// Return top 5 repos
-	if len(allRepos) > 5 {
-		allRepos = allRepos[:5]
+	if len(filteredRepos) > 5 {
+		filteredRepos = filteredRepos[:5]
 	}
 
-	return allRepos, nil
+	return filteredRepos, nil
 }
 
-// FetchRecentActivity fetches recent user activity
+// FetchRecentActivity fetches recent user activity with pagination
 // includePrivate: if true, uses /users/{username}/events to get private events (only works for authenticated user)
 func (c *GitHubClient) FetchRecentActivity(username string, includePrivate bool) ([]Activity, error) {
-	var url string
+	var baseURL string
 
 	if includePrivate {
-		url = fmt.Sprintf("%s/users/%s/events?per_page=30", githubAPIURL, username)
+		baseURL = fmt.Sprintf("%s/users/%s/events?per_page=100", githubAPIURL, username)
 	} else {
-		url = fmt.Sprintf("%s/users/%s/events/public?per_page=20", githubAPIURL, username)
+		baseURL = fmt.Sprintf("%s/users/%s/events/public?per_page=100", githubAPIURL, username)
 	}
 
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, err
-	}
-	// Authorization header automatically added by go-gh HTTPClient
-	req.Header.Set("Accept", "application/vnd.github.v3+json")
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	var events []struct {
+	var allEvents []struct {
 		Type      string `json:"type"`
 		CreatedAt string `json:"created_at"`
 		Public    bool   `json:"public"`
@@ -496,12 +637,51 @@ func (c *GitHubClient) FetchRecentActivity(username string, includePrivate bool)
 		Payload map[string]interface{} `json:"payload"`
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(&events); err != nil {
-		return nil, err
+	// Fetch up to 3 pages (300 events max)
+	for page := 1; page <= 3; page++ {
+		url := fmt.Sprintf("%s&page=%d", baseURL, page)
+
+		req, err := http.NewRequest("GET", url, nil)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Accept", "application/vnd.github.v3+json")
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			return nil, err
+		}
+
+		var events []struct {
+			Type      string `json:"type"`
+			CreatedAt string `json:"created_at"`
+			Public    bool   `json:"public"`
+			Repo      struct {
+				Name string `json:"name"`
+			} `json:"repo"`
+			Payload map[string]interface{} `json:"payload"`
+		}
+
+		if err := json.NewDecoder(resp.Body).Decode(&events); err != nil {
+			resp.Body.Close()
+			return nil, err
+		}
+		resp.Body.Close()
+
+		if len(events) == 0 {
+			break
+		}
+
+		allEvents = append(allEvents, events...)
+
+		// If we got less than 100, we're done
+		if len(events) < 100 {
+			break
+		}
 	}
 
 	var activities []Activity
-	for _, event := range events {
+	for _, event := range allEvents {
 		timestamp, _ := time.Parse(time.RFC3339, event.CreatedAt)
 		action := getActionDescription(event.Type, event.Payload)
 
