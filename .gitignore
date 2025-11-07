@@ -1,5 +1,5 @@
 # Binaries
-gittui
+/gittui
 *.exe
 *.exe~
 *.dll
